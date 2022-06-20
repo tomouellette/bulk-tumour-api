@@ -1,5 +1,4 @@
-import requests
-from bs4 import BeautifulSoup
+from datetime import datetime
 
 def delimiter_type(filename: str) -> str:
     """
@@ -15,3 +14,9 @@ def delimiter_type(filename: str) -> str:
             return "\t"
     except:
         raise SyntaxError("The database file must be in .csv, .tsv, or .txt format.")
+    
+def record_date(tosec=False):
+  if tosec == True:
+    return 'h'.join(str(datetime.now()).split(' '))
+  else:
+    return ''.join(str(datetime.now()).split(' ')[0])

@@ -1,7 +1,9 @@
+import os
 import requests
 import pandas as pd
+from tqdm.auto import tqdm
 from bs4 import BeautifulSoup
-from .utils import delimiter_type
+from .utils import delimiter_type, record_date
 from dataclasses import dataclass, field
 
 class ZenodoRepository:
@@ -66,29 +68,65 @@ class ZenodoRepository:
         self.database = pd.read_csv(self.path + database_name, delimiter=delimiter_type(database_name))
         return self.database
     
-    def get_synthetic_datasets(self, synthetic_meta_name='synthetic.tsv') -> None:
+    def get_synthetic_datasets(self, synthetic_meta_name='synthetic_datasets.tsv') -> None:
         """
         Lists all available synthetic datasets with references and descriptions.
         """
-        self.synthetic = pd.read_csv(self.path + synthetic_meta_name, delimiter=delimiter_type(synthetic_meta_name))
+        self.synthetic = pd.read_csv(self.path + '/files/' + synthetic_meta_name, delimiter=delimiter_type(synthetic_meta_name))
         return self.synthetic
     
-    def download_synthetic_dataset(self, dataset_name: str, save_path: str):
+    def download_synthetic_dataset(self, 
+            dataset_name: str, 
+            save_path: str, 
+            synthetic_meta_name='synthetic_datasets.tsv', 
+            synthetic_samples_name='synthetic_samples.tsv'
+        ) -> None:
         """
-        Download one of the available synthetic datasets by name
+        Download all samples in one of the available synthetic datasets
         
         Args:
             dataset_name (str): the name of the synthetic dataset listed in .list_synthetic_datasets()
-        """
-        if self.synthetic['dataset'].str.contains(dataset_name):
-            # Send a GET request
-            response = requests.get(self.path + '/synthetic/' + dataset_name)
+            save_path (str): the output directory where downloaded dataset will be saved
+            synthetic_meta_name (str): the name of the synthetic dataset metadata file in target zenodo repository
+            synthetic_samples_name (str): the name of the synthetic dataset samples file in target zenodo repository
             
-            # Download data if response was successful
-            if response.ok:
-                open(save_path, 'wb').write(response.content)
-            else:
-                response.raise_for_status()            
+        Example:
+            >>> repo.download_synthetic_dataset(dataset_name='timing', save_path='/home/user/data/')
+        
+        """
+        # Format save_path string
+        save_path = save_path if save_path[-1] != '/' else save_path[:-1]
+        
+        # Load synthetic dataset metadata if not "cached"
+        if not hasattr(self, 'synthetic'):
+            self.synthetic = pd.read_csv(self.path + '/files/' + synthetic_meta_name, delimiter=delimiter_type(synthetic_meta_name))            
+        
+        # Check if dataset name is valid and download all the data if true
+        if dataset_name in list(self.synthetic['dataset']):
+            # Load samples data frame
+            samples = pd.read_csv(self.path + '/files/' +  synthetic_samples_name, delimiter=delimiter_type(synthetic_samples_name))
+            
+            # Filter samples by dataset name
+            samples = samples.loc[samples['dataset'] == dataset_name, :]
+            
+            # Download all the samples
+            print("\033[1mbulk-tumour-api\033[0m\n" + f"Downloading synthetic dataset: {dataset_name}\nNumber of files: {len(samples['file'])}")
+            for sample in tqdm(samples['file']):
+                timestamp = record_date()
+                
+                # Check if data path already exists
+                if not os.path.exists(save_path + '/' + dataset_name + '_' + timestamp):
+                    os.makedirs(save_path + '/' + dataset_name + '_' + timestamp)
+                
+                # Load and save sample data
+                pd.read_csv(self.path + '/files/' +  sample, delimiter=delimiter_type(sample)).to_csv(
+                    save_path + '/' + dataset_name + '_' + timestamp + '/' + sample,
+                    index = False
+                )
+            
         else:
-            raise ValueError('The dataset name provided does not exist in the synthetic dataset list.')
+            raise ValueError(
+                'The provided dataset name does not exist in the synthetic dataset list. \
+                Please call .get_synthetic_datasets() to see the available synthetic datasets.'
+                )
         
